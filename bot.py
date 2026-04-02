@@ -2,6 +2,7 @@ import os
 import asyncio
 import logging
 import tempfile
+from datetime import datetime
 from starlette.applications import Starlette
 from starlette.routing import Route
 from starlette.requests import Request
@@ -25,74 +26,26 @@ def make_keyboard(options, include_custom=True):
         buttons.append([KeyboardButton("✏️ Свой вариант")])
     return ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
 
-# ---------- КАЛЬКУЛЯТОР МНОАР (ИНТЕГРИРОВАН) ----------
-# Состояния для МНОАР (продолжение основного диалога)
-MNOAR_STATE_AGE, MNOAR_STATE_CARDIO, MNOAR_STATE_LUNG, MNOAR_STATE_OP = range(100, 104)
-
-async def mnoar_start(update, context):
-    await update.message.reply_text(
-        "🧮 **Калькулятор МНОАР**\n\n1️⃣ Возраст:\n- до 60 → 0 баллов\n- 60–70 → 1 балл\n- старше 70 → 2 балла\n\nСколько лет пациенту?",
-        parse_mode="Markdown"
-    )
-    return MNOAR_STATE_AGE
-
-async def mnoar_age(update, context):
+def get_obesity_grade(bmi):
     try:
-        age = int(update.message.text.strip())
-        points = 0 if age < 60 else 1 if age <= 70 else 2
-        context.user_data['mnoar_points'] = points
-        await update.message.reply_text(
-            f"✅ {points} баллов.\n\n2️⃣ Сердечно-сосудистые заболевания:\n- нет → 0\n- компенсированные → 1\n- декомпенсированные → 3\n\nВыберите вариант:",
-            reply_markup=make_keyboard(["нет", "компенсированные", "декомпенсированные"])
-        )
-        return MNOAR_STATE_CARDIO
-    except ValueError:
-        await update.message.reply_text("❌ Введите число (возраст):")
-        return MNOAR_STATE_AGE
+        bmi_val = float(bmi)
+        if bmi_val < 18.5:
+            return "дефицит массы тела"
+        elif bmi_val < 25:
+            return "норма"
+        elif bmi_val < 30:
+            return "ожирение 1 степени"
+        elif bmi_val < 35:
+            return "ожирение 2 степени"
+        elif bmi_val < 40:
+            return "ожирение 3 степени"
+        else:
+            return "ожирение 4 степени"
+    except:
+        return ""
 
-async def mnoar_cardio(update, context):
-    ans = update.message.text.strip().lower()
-    points = 1 if "компенсир" in ans else 3 if "декомпенсир" in ans else 0
-    context.user_data['mnoar_points'] += points
-    await update.message.reply_text(
-        f"✅ +{points} (всего {context.user_data['mnoar_points']})\n\n3️⃣ Заболевания лёгких:\n- нет → 0\n- ХОБЛ/астма → 1\n- дыхательная недостаточность → 3\n\nВыберите:",
-        reply_markup=make_keyboard(["нет", "ХОБЛ/астма", "дыхательная недостаточность"])
-    )
-    return MNOAR_STATE_LUNG
-
-async def mnoar_lung(update, context):
-    ans = update.message.text.strip().lower()
-    points = 1 if "хобл" in ans or "астма" in ans else 3 if "дыхательная" in ans else 0
-    context.user_data['mnoar_points'] += points
-    await update.message.reply_text(
-        f"✅ +{points} (всего {context.user_data['mnoar_points']})\n\n4️⃣ Характер операции:\n- малая → 0\n- средняя → 1\n- большая → 2\n- экстренная → 3\n\nВыберите:",
-        reply_markup=make_keyboard(["малая", "средняя", "большая", "экстренная"])
-    )
-    return MNOAR_STATE_OP
-
-async def mnoar_op(update, context):
-    ans = update.message.text.strip().lower()
-    points = 0 if "малая" in ans else 1 if "средняя" in ans else 2 if "большая" in ans else 3 if "экстренная" in ans else 0
-    total = context.user_data['mnoar_points'] + points
-    risk = "низкий" if total <= 2 else "средний" if total <= 5 else "высокий"
-    result = f"{total} баллов – {risk} риск"
-    context.user_data['mnoar_result'] = result
-    context.user_data['mnoar'] = result  # сохраняем в основное поле
-    await update.message.reply_text(f"✅ Итог МНОАР: {result}", reply_markup=ReplyKeyboardMarkup([], resize_keyboard=True))
-    # Возвращаемся к основному диалогу
-    step = context.user_data.get("step", 0)
-    if step < len(FIELDS):
-        next_field = FIELDS[step]
-        kb = make_keyboard(next_field[2], "choice" in next_field[3])
-        await update.message.reply_text(next_field[1], reply_markup=kb)
-        return STATE_LIST[step]
-    else:
-        return await generate_document(update, context)
-
-# ---------- ОСНОВНОЙ ОПРОС ----------
+# ---------- ОСНОВНОЙ ОПРОС (без date и time) ----------
 FIELDS = [
-    ("date", "📅 Дата (например, 12.04.2026)", None, "text"),
-    ("time", "⏰ Время (например, 10:30)", None, "text"),
     ("fio", "👤 ФИО пациента", None, "text"),
     ("age", "📆 Возраст (лет)", None, "number"),
     ("h", "📏 Рост (см)", None, "number"),
@@ -112,7 +65,6 @@ FIELDS = [
     ("st_gen", "😐 Общее состояние", ["удовлетворительное", "средней тяжести", "тяжелое"], "choice_with_custom"),
     ("psycho", "🧠 Сознание", ["ясное", "спутанное", "оглушение"], "choice_with_custom"),
     ("body_type", "🏋️ Телосложение", ["астеник", "нормостеник", "гиперстеник"], "choice_with_custom"),
-    # Поле "obesity" будет рассчитано автоматически, не задаём вопрос
     ("skin", "🩻 Кожные покровы", ["обычной окраски", "бледные", "гиперемированы"], "choice_with_custom"),
     ("moist", "💧 Влажность кожи", ["нормальная", "снижена", "потливость"], "choice_with_custom"),
     ("thyroid", "🦋 Щитовидная железа", ["не увеличена", "увеличена"], "choice_with_custom"),
@@ -142,7 +94,6 @@ FIELDS = [
     ("lab", "🧪 Лаборатория", ["в пределах референсных значений"], "choice_with_custom"),
     ("ecg", "📈 ЭКГ", ["норма", "возрастные изменения"], "choice_with_custom"),
     ("asa", "ASA", ["I", "II", "III", "IV", "V", "E"], "choice_with_custom"),
-    ("mnoar", "📋 МНОАР (калькулятор)", None, "mnoar_calc"),  # специальный тип
     ("op_vol", "📐 Объём операции", None, "text"),
     ("anes_type", "💉 Тип анестезии", ["тотальная", "сочетанная", "комбинированная", "в/венная", "ингаляционная", "эпидуральная", "субарахноидальная", "проводниковая"], "choice_with_custom"),
     ("add_test", "🔬 Дообследование", None, "text"),
@@ -155,25 +106,6 @@ FIELDS = [
 ]
 
 STATE_LIST = list(range(len(FIELDS)))
-
-# Функция для авто-расчёта степени ожирения по ИМТ
-def get_obesity_grade(bmi):
-    try:
-        bmi_val = float(bmi)
-        if bmi_val < 18.5:
-            return "дефицит массы тела"
-        elif bmi_val < 25:
-            return "норма"
-        elif bmi_val < 30:
-            return "ожирение 1 степени"
-        elif bmi_val < 35:
-            return "ожирение 2 степени"
-        elif bmi_val < 40:
-            return "ожирение 3 степени"
-        else:
-            return "ожирение 4 степени"
-    except:
-        return ""
 
 async def start(update, context):
     context.user_data.clear()
@@ -191,12 +123,10 @@ async def handle_field(update, context):
     field_name, question, options, input_type = FIELDS[step]
     answer = update.message.text.strip()
 
-    # Свой вариант
     if answer == "✏️ Свой вариант":
         await update.message.reply_text("Введите свой вариант:")
         return STATE_LIST[step]
 
-    # Множественный выбор
     if input_type == "choice_with_custom_multiple":
         multi_key = f"multi_{field_name}"
         if multi_key not in context.user_data:
@@ -218,11 +148,6 @@ async def handle_field(update, context):
             await update.message.reply_text(next_f[1], reply_markup=kb)
             return STATE_LIST[step]
 
-    # Калькулятор МНОАР
-    if input_type == "mnoar_calc":
-        return await mnoar_start(update, context)
-
-    # Валидация числа
     if input_type == "number":
         try:
             float(answer)
@@ -230,7 +155,6 @@ async def handle_field(update, context):
             await update.message.reply_text("❌ Введите число:")
             return STATE_LIST[step]
 
-    # Проверка выбора из кнопок
     if "choice" in input_type and options and answer not in options:
         await update.message.reply_text(f"❌ Выберите из кнопок: {', '.join(options)}")
         return STATE_LIST[step]
@@ -238,25 +162,22 @@ async def handle_field(update, context):
     context.user_data[field_name] = answer
 
     # Авто-расчёт ИМТ и степени ожирения
-    if field_name == "w" and "h" in context.user_data and "bmi" not in context.user_data:
+    if field_name == "w" and "h" in context.user_data:
         try:
             h = float(context.user_data["h"]) / 100
             w = float(answer)
             bmi = round(w / (h*h), 1)
             context.user_data["bmi"] = str(bmi)
-            obesity = get_obesity_grade(bmi)
-            context.user_data["obesity"] = obesity
-            logging.info(f"ИМТ: {bmi}, Ожирение: {obesity}")
+            context.user_data["obesity"] = get_obesity_grade(bmi)
         except Exception as e:
-            logging.error(f"Ошибка расчёта ИМТ: {e}")
-    elif field_name == "h" and "w" in context.user_data and "bmi" not in context.user_data:
+            logging.error(f"Ошибка ИМТ: {e}")
+    elif field_name == "h" and "w" in context.user_data:
         try:
             h = float(answer) / 100
             w = float(context.user_data["w"])
             bmi = round(w / (h*h), 1)
             context.user_data["bmi"] = str(bmi)
-            obesity = get_obesity_grade(bmi)
-            context.user_data["obesity"] = obesity
+            context.user_data["obesity"] = get_obesity_grade(bmi)
         except:
             pass
 
@@ -272,11 +193,17 @@ async def handle_field(update, context):
         return STATE_LIST[step]
 
 async def generate_document(update, context):
-    data = context.user_data
-    if not os.path.exists("template.docx"):
+    data = context.user_data.copy()
+    # Добавляем текущую дату и время
+    now = datetime.now()
+    data["date"] = now.strftime("%d.%m.%Y")
+    data["time"] = now.strftime("%H:%M")
+    
+    template_path = "template.docx"
+    if not os.path.exists(template_path):
         await update.message.reply_text("❌ Файл template.docx не найден!")
         return ConversationHandler.END
-    doc = Document("template.docx")
+    doc = Document(template_path)
     for para in doc.paragraphs:
         for k, v in data.items():
             para.text = para.text.replace(f"{{{{{k}}}}}", str(v))
@@ -312,13 +239,6 @@ async def main():
     )
     app.add_handler(conv)
     app.add_handler(CommandHandler("start", start))
-
-    # Регистрируем состояния МНОАР как часть основного диалога (они уже обрабатываются в handle_field, но нужно, чтобы переходы работали)
-    # Для корректной работы добавим временные обработчики для состояний МНОАР
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'^\d+$'), mnoar_age), group=1)
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(нет|компенсированные|декомпенсированные)'), mnoar_cardio), group=1)
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(нет|ХОБЛ/астма|дыхательная недостаточность)'), mnoar_lung), group=1)
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'(малая|средняя|большая|экстренная)'), mnoar_op), group=1)
 
     await setup_webhook(app)
     await app.initialize()
