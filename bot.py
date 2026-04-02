@@ -201,8 +201,9 @@ async def main():
         return PlainTextResponse("OK")
 
     starlette_app = Starlette(routes=[
-        Route("/telegram", telegram_webhook, methods=["POST"]),
-        Route("/healthcheck", health_check, methods=["GET"]),
+    Route("/", health_check, methods=["GET"]),   # <-- добавить эту строку
+    Route("/telegram", telegram_webhook, methods=["POST"]),
+    Route("/healthcheck", health_check, methods=["GET"]),
     ])
 
     config = uvicorn.Config(starlette_app, host="0.0.0.0", port=PORT, log_level="info")
