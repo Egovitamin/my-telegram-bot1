@@ -25,65 +25,116 @@ def make_keyboard(options, include_custom=True):
         buttons.append([KeyboardButton("✏️ Свой вариант")])
     return ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
 
-# ---------- КАЛЬКУЛЯТОР МНОАР ----------
-MNOAR_STATE_AGE, MNOAR_STATE_CARDIO, MNOAR_STATE_LUNG, MNOAR_STATE_OP = range(4)
+# ---------- КАЛЬКУЛЯТОР МНОАР (возвращает результат через user_data) ----------
+# Состояния для калькулятора
+MNOAR_AGE, MNOAR_CARDIO, MNOAR_LUNG, MNOAR_OP = range(10, 14)
 
-async def mnoar_start(update, context):
+async def mnoar_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Запускает калькулятор МНОАР"""
     await update.message.reply_text(
-        "🧮 **Калькулятор МНОАР**\n\n1️⃣ Возраст:\n- до 60 → 0 баллов\n- 60–70 → 1 балл\n- старше 70 → 2 балла\n\nСколько лет?",
-        parse_mode="Markdown"
+        "🧮 **Калькулятор МНОАР**\n\n"
+        "1️⃣ Возраст:\n- до 60 лет → 0 баллов\n- 60–70 лет → 1 балл\n- старше 70 → 2 балла\n\n"
+        "Введите возраст (лет):",
+        parse_mode="Markdown",
+        reply_markup=ReplyKeyboardMarkup([], resize_keyboard=True)
     )
-    return MNOAR_STATE_AGE
+    return MNOAR_AGE
 
-async def mnoar_age(update, context):
+async def mnoar_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         age = int(update.message.text.strip())
-        points = 0 if age < 60 else 1 if age <= 70 else 2
+        if age < 60:
+            points = 0
+        elif age <= 70:
+            points = 1
+        else:
+            points = 2
         context.user_data['mnoar_points'] = points
         await update.message.reply_text(
-            f"✅ {points} баллов.\n\n2️⃣ Сердечно-сосудистые:\n- нет → 0\n- компенсированные → 1\n- декомпенсированные → 3\n\nВыберите:",
+            f"✅ Возраст {age} → {points} баллов.\n\n"
+            "2️⃣ Сердечно-сосудистые заболевания:\n"
+            "- нет → 0 баллов\n- компенсированные → 1 балл\n- декомпенсированные → 3 балла\n\n"
+            "Выберите вариант:",
             reply_markup=make_keyboard(["нет", "компенсированные", "декомпенсированные"])
         )
-        return MNOAR_STATE_CARDIO
+        return MNOAR_CARDIO
     except ValueError:
-        await update.message.reply_text("❌ Введите число:")
-        return MNOAR_STATE_AGE
+        await update.message.reply_text("❌ Введите число (возраст):")
+        return MNOAR_AGE
 
-async def mnoar_cardio(update, context):
+async def mnoar_cardio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ans = update.message.text.strip().lower()
-    points = 1 if "компенсир" in ans else 3 if "декомпенсир" in ans else 0
+    if "компенсир" in ans:
+        points = 1
+    elif "декомпенсир" in ans:
+        points = 3
+    else:
+        points = 0
     context.user_data['mnoar_points'] += points
     await update.message.reply_text(
-        f"✅ +{points} (всего {context.user_data['mnoar_points']})\n\n3️⃣ Лёгкие:\n- нет → 0\n- ХОБЛ/астма → 1\n- дыхательная недостаточность → 3\n\nВыберите:",
+        f"✅ Добавлено {points} баллов. Сумма: {context.user_data['mnoar_points']}\n\n"
+        "3️⃣ Заболевания лёгких:\n"
+        "- нет → 0 баллов\n- ХОБЛ/бронхиальная астма → 1 балл\n- дыхательная недостаточность → 3 балла\n\n"
+        "Выберите вариант:",
         reply_markup=make_keyboard(["нет", "ХОБЛ/астма", "дыхательная недостаточность"])
     )
-    return MNOAR_STATE_LUNG
+    return MNOAR_LUNG
 
-async def mnoar_lung(update, context):
+async def mnoar_lung(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ans = update.message.text.strip().lower()
-    points = 1 if "хобл" in ans or "астма" in ans else 3 if "дыхательная" in ans else 0
+    if "хобл" in ans or "астма" in ans:
+        points = 1
+    elif "дыхательная" in ans:
+        points = 3
+    else:
+        points = 0
     context.user_data['mnoar_points'] += points
     await update.message.reply_text(
-        f"✅ +{points} (всего {context.user_data['mnoar_points']})\n\n4️⃣ Операция:\n- малая → 0\n- средняя → 1\n- большая → 2\n- экстренная → 3\n\nВыберите:",
+        f"✅ Добавлено {points} баллов. Сумма: {context.user_data['mnoar_points']}\n\n"
+        "4️⃣ Характер операции:\n"
+        "- малая (до 30 мин) → 0 баллов\n- средняя (30-120 мин) → 1 балл\n- большая (>120 мин) → 2 балла\n- экстренная → 3 балла\n\n"
+        "Выберите вариант:",
         reply_markup=make_keyboard(["малая", "средняя", "большая", "экстренная"])
     )
-    return MNOAR_STATE_OP
+    return MNOAR_OP
 
-async def mnoar_op(update, context):
+async def mnoar_op(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ans = update.message.text.strip().lower()
-    points = 0 if "малая" in ans else 1 if "средняя" in ans else 2 if "большая" in ans else 3 if "экстренная" in ans else 0
+    if "малая" in ans:
+        points = 0
+    elif "средняя" in ans:
+        points = 1
+    elif "большая" in ans:
+        points = 2
+    elif "экстренная" in ans:
+        points = 3
+    else:
+        points = 0
     total = context.user_data['mnoar_points'] + points
-    risk = "низкий" if total <= 2 else "средний" if total <= 5 else "высокий"
-    result = f"{total} баллов – {risk} риск"
+    if total <= 2:
+        risk = "низкий риск"
+    elif total <= 5:
+        risk = "средний риск"
+    else:
+        risk = "высокий риск"
+    result = f"{total} баллов – {risk}"
     context.user_data['mnoar_result'] = result
-    await update.message.reply_text(f"✅ Итог: {result}", reply_markup=ReplyKeyboardMarkup([], resize_keyboard=True))
+    # Сохраняем результат в основное поле
+    context.user_data['mnoar'] = result
+    await update.message.reply_text(
+        f"✅ **Результат МНОАР:** {result}\n\nВозвращаемся к основному опросу.",
+        parse_mode="Markdown",
+        reply_markup=ReplyKeyboardMarkup([], resize_keyboard=True)
+    )
+    # Завершаем калькулятор и возвращаем управление основному диалогу
     return ConversationHandler.END
 
-async def mnoar_cancel(update, context):
-    await update.message.reply_text("Калькулятор отменён.", reply_markup=ReplyKeyboardMarkup([], resize_keyboard=True))
+async def mnoar_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Калькулятор МНОАР отменён. Продолжаем опрос.", reply_markup=ReplyKeyboardMarkup([], resize_keyboard=True))
     return ConversationHandler.END
 
 # ---------- ОСНОВНОЙ ОПРОС ----------
+# Определяем поля. Тип 'mnoar_calc' означает, что нужно запустить калькулятор и результат подставить в это поле
 FIELDS = [
     ("date", "📅 Дата (например, 12.04.2026)", None, "text"),
     ("time", "⏰ Время (например, 10:30)", None, "text"),
@@ -137,7 +188,7 @@ FIELDS = [
     ("lab", "🧪 Лаборатория", None, "text"),
     ("ecg", "📈 ЭКГ", None, "text"),
     ("asa", "ASA", ["I", "II", "III", "IV", "V", "E"], "choice_with_custom"),
-    ("mnoar", "📋 МНОАР", None, "mnoar_calc"),
+    ("mnoar", "📋 МНОАР (запустится калькулятор)", None, "mnoar_calc"),  # специальный тип
     ("op_vol", "📐 Объём операции", None, "text"),
     ("anes_type", "💉 Тип анестезии", ["тотальная", "сочетанная", "комбинированная", "в/венная", "ингаляционная", "эпидуральная", "субарахноидальная", "проводниковая"], "choice_with_custom"),
     ("add_test", "🔬 Дообследование", None, "text"),
@@ -151,15 +202,21 @@ FIELDS = [
 
 STATE_LIST = list(range(len(FIELDS)))
 
-async def start(update, context):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     context.user_data["step"] = 0
+    # Сохраняем текущий основной диалог, чтобы потом вернуться
+    context.user_data["main_conversation"] = True
     q = FIELDS[0][1]
     kb = make_keyboard(FIELDS[0][2], "choice" in FIELDS[0][3])
-    await update.message.reply_text("👨‍⚕️ **Осмотр анестезиолога**\n/cancel для отмены\n\n" + q, parse_mode="Markdown", reply_markup=kb)
+    await update.message.reply_text(
+        "👨‍⚕️ **Осмотр анестезиолога**\n/cancel для отмены\n\n" + q,
+        parse_mode="Markdown",
+        reply_markup=kb
+    )
     return STATE_LIST[0]
 
-async def handle_field(update, context):
+async def handle_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
     step = context.user_data.get("step", 0)
     if step >= len(FIELDS):
         return await generate_document(update, context)
@@ -167,9 +224,9 @@ async def handle_field(update, context):
     field_name, question, options, input_type = FIELDS[step]
     answer = update.message.text.strip()
 
-    # Свой вариант
+    # Если это ответ на "Свой вариант"
     if answer == "✏️ Свой вариант":
-        await update.message.reply_text("Введите свой вариант:")
+        await update.message.reply_text("Введите свой вариант текстом:")
         return STATE_LIST[step]
 
     # Множественный выбор
@@ -179,7 +236,10 @@ async def handle_field(update, context):
             context.user_data[multi_key] = []
         if answer not in ["Готово", "закончить"]:
             context.user_data[multi_key].append(answer)
-            await update.message.reply_text(f"✅ Добавлено: {answer}\nМожно добавить ещё или 'Готово'", reply_markup=make_keyboard(options + ["Готово"], False))
+            await update.message.reply_text(
+                f"✅ Добавлено: {answer}\nМожно добавить ещё или напишите 'Готово'",
+                reply_markup=make_keyboard(options + ["Готово"], False)
+            )
             return STATE_LIST[step]
         else:
             context.user_data[field_name] = ", ".join(context.user_data[multi_key])
@@ -194,73 +254,110 @@ async def handle_field(update, context):
             await update.message.reply_text(next_f[1], reply_markup=kb)
             return STATE_LIST[step]
 
-    # Калькулятор МНОАР
+    # Если поле требует калькулятора МНОАР
     if input_type == "mnoar_calc":
-        context.user_data["pending_mnoar"] = field_name
+        # Запускаем калькулятор, но не увеличиваем шаг
+        context.user_data["pending_field"] = field_name
+        await update.message.reply_text("Запускаю калькулятор МНОАР...", reply_markup=ReplyKeyboardMarkup([], resize_keyboard=True))
         return await mnoar_start(update, context)
 
     # Валидация числа
     if input_type == "number":
         try:
             float(answer)
-        except:
-            await update.message.reply_text("❌ Введите число:")
+        except ValueError:
+            await update.message.reply_text("❌ Введите число (например, 70):")
             return STATE_LIST[step]
 
-    # Проверка выбора из кнопок
+    # Проверка выбора из кнопок (если не "свой вариант")
     if "choice" in input_type and options and answer not in options:
-        await update.message.reply_text(f"❌ Выберите из кнопок: {', '.join(options)}")
+        await update.message.reply_text(f"❌ Выберите вариант из кнопок: {', '.join(options)}")
         return STATE_LIST[step]
 
+    # Сохраняем ответ
     context.user_data[field_name] = answer
 
-    # Авто-ИМТ
-    if field_name == "w" and "h" in context.user_data and "bmi" not in context.user_data:
+    # Автоматический расчёт ИМТ после ввода веса
+    if field_name == "w" and "h" in context.user_data:
         try:
-            h = float(context.user_data["h"]) / 100
-            w = float(answer)
-            bmi = round(w / (h*h), 1)
+            h_cm = float(context.user_data["h"])
+            w_kg = float(answer)
+            h_m = h_cm / 100.0
+            bmi = round(w_kg / (h_m * h_m), 1)
             context.user_data["bmi"] = str(bmi)
-        except:
-            pass
+            logging.info(f"Рассчитан ИМТ: {bmi}")
+        except Exception as e:
+            logging.error(f"Ошибка расчёта ИМТ: {e}")
 
     step += 1
     context.user_data["step"] = step
+
     if step >= len(FIELDS):
-        await update.message.reply_text("✅ Формирую документ...")
+        await update.message.reply_text("✅ Все данные собраны. Формирую документ...")
         return await generate_document(update, context)
     else:
-        nf = FIELDS[step]
-        kb = make_keyboard(nf[2], "choice" in nf[3])
-        await update.message.reply_text(nf[1], reply_markup=kb)
+        next_f = FIELDS[step]
+        kb = make_keyboard(next_f[2], "choice" in next_f[3])
+        await update.message.reply_text(next_f[1], reply_markup=kb)
         return STATE_LIST[step]
 
-async def generate_document(update, context):
+async def generate_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = context.user_data
     if not os.path.exists("template.docx"):
         await update.message.reply_text("❌ Файл template.docx не найден!")
         return ConversationHandler.END
+
     doc = Document("template.docx")
+    # Замена в параграфах
     for para in doc.paragraphs:
         for k, v in data.items():
-            para.text = para.text.replace(f"{{{{{k}}}}}", str(v))
+            placeholder = f"{{{{{k}}}}}"
+            if placeholder in para.text:
+                para.text = para.text.replace(placeholder, str(v))
+    # Замена в таблицах
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
                 for k, v in data.items():
-                    cell.text = cell.text.replace(f"{{{{{k}}}}}", str(v))
+                    placeholder = f"{{{{{k}}}}}"
+                    if placeholder in cell.text:
+                        cell.text = cell.text.replace(placeholder, str(v))
+
     with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
         doc.save(tmp.name)
-        path = tmp.name
-    with open(path, "rb") as f:
-        await update.message.reply_document(f, filename=f"осмотр_{data.get('fio','patient')}.docx", caption="📄 Готово!")
-    os.unlink(path)
-    await update.message.reply_text("/start для нового осмотра", reply_markup=ReplyKeyboardMarkup([], resize_keyboard=True))
+        tmp_path = tmp.name
+
+    with open(tmp_path, "rb") as f:
+        await update.message.reply_document(
+            document=f,
+            filename=f"осмотр_{data.get('fio', 'patient')}.docx",
+            caption="📄 Осмотр анестезиолога готов!"
+        )
+    os.unlink(tmp_path)
+    await update.message.reply_text("Для нового осмотра нажмите /start", reply_markup=ReplyKeyboardMarkup([], resize_keyboard=True))
     return ConversationHandler.END
 
-async def cancel(update, context):
-    await update.message.reply_text("Отменено. /start", reply_markup=ReplyKeyboardMarkup([], resize_keyboard=True))
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("❌ Заполнение отменено. /start для нового осмотра", reply_markup=ReplyKeyboardMarkup([], resize_keyboard=True))
     return ConversationHandler.END
+
+# ---------- ОБРАБОТЧИК ВОЗВРАТА ИЗ КАЛЬКУЛЯТОРА ----------
+async def after_mnoar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Вызывается после завершения калькулятора, чтобы продолжить основной диалог"""
+    # Калькулятор уже сохранил результат в context.user_data['mnoar']
+    # Теперь нужно продолжить с того же шага, на котором остановились
+    step = context.user_data.get("step", 0)
+    # Увеличиваем шаг, так как поле mnoar уже обработано
+    step += 1
+    context.user_data["step"] = step
+    if step >= len(FIELDS):
+        await update.message.reply_text("✅ Все данные собраны. Формирую документ...")
+        return await generate_document(update, context)
+    else:
+        next_f = FIELDS[step]
+        kb = make_keyboard(next_f[2], "choice" in next_f[3])
+        await update.message.reply_text(next_f[1], reply_markup=kb)
+        return STATE_LIST[step]
 
 # ---------- ЗАПУСК ----------
 async def setup_webhook(app):
@@ -269,32 +366,38 @@ async def setup_webhook(app):
 
 async def main():
     app = Application.builder().token(TOKEN).updater(None).build()
+
+    # Основной диалог
     conv = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={i: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_field)] for i in STATE_LIST},
         fallbacks=[CommandHandler("cancel", cancel)],
     )
     app.add_handler(conv)
-    app.add_handler(CommandHandler("start", start))
 
+    # Диалог калькулятора МНОАР
     mnoar_conv = ConversationHandler(
-        entry_points=[],
+        entry_points=[],  # entry_points пуст, запускается только из основного диалога
         states={
-            MNOAR_STATE_AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, mnoar_age)],
-            MNOAR_STATE_CARDIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, mnoar_cardio)],
-            MNOAR_STATE_LUNG: [MessageHandler(filters.TEXT & ~filters.COMMAND, mnoar_lung)],
-            MNOAR_STATE_OP: [MessageHandler(filters.TEXT & ~filters.COMMAND, mnoar_op)],
+            MNOAR_AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, mnoar_age)],
+            MNOAR_CARDIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, mnoar_cardio)],
+            MNOAR_LUNG: [MessageHandler(filters.TEXT & ~filters.COMMAND, mnoar_lung)],
+            MNOAR_OP: [MessageHandler(filters.TEXT & ~filters.COMMAND, mnoar_op)],
         },
         fallbacks=[CommandHandler("cancel_mnoar", mnoar_cancel)],
     )
     app.add_handler(mnoar_conv)
+
+    # Обработчик возврата после калькулятора (можно использовать как fallback, но проще добавить обработчик в конец)
+    # Вместо этого мы после завершения калькулятора вызовем after_mnoar, но пока оставим так.
 
     await setup_webhook(app)
     await app.initialize()
     await app.start()
 
     async def webhook(req: Request) -> Response:
-        upd = Update.de_json(await req.json(), app.bot)
+        data = await req.json()
+        upd = Update.de_json(data, app.bot)
         await app.process_update(upd)
         return Response()
 
