@@ -11,13 +11,12 @@ from telegram.ext import Application, CommandHandler, ConversationHandler, Messa
 from docx import Document
 import uvicorn
 
-# ---------- Настройки ----------
 logging.basicConfig(level=logging.INFO)
 TOKEN = os.environ["BOT_TOKEN"]
 URL = os.environ["RENDER_EXTERNAL_URL"]
 PORT = int(os.getenv("PORT", 8000))
 
-# ---------- Список полей (вопросов) ----------
+# ---------- СПИСОК ПОЛЕЙ (ПО ВАШЕМУ ШАБЛОНУ) ----------
 FIELDS = [
     ("date", "📅 Дата (например, 12.04.2026)"),
     ("time", "⏰ Время (например, 10:30)"),
@@ -39,17 +38,22 @@ FIELDS = [
     ("specs", "📌 Особенности (любые)"),
     ("st_gen", "😐 Общее состояние"),
     ("psycho", "🧠 Сознание"),
-    ("body_type", "🏋️ Телосложение (астеник/нормостеник/гиперстеник)"),
+    ("t1", "Телосложение: астеник (да/нет) — если да, напишите 'да'"),
+    ("t2", "Телосложение: нормостеник (да/нет)"),
+    ("t3", "Телосложение: гиперстеник (да/нет)"),
     ("bmi", "📊 Индекс массы тела (число)"),
     ("obesity", "🍔 Ожирение (если есть – степень)"),
-    ("skin", "🩻 Кожные покровы и слизистые"),
+    ("skin", "🩻 Кожные покровы и слизистые (обычные/бледные/гиперемированы)"),
     ("moist", "💧 Влажность кожи (нормальная/снижена/потливость)"),
     ("thyroid", "🦋 Щитовидная железа (норма/увеличена)"),
     ("turgor", "🤚 Тургор кожи (нормальный/снижен)"),
     ("temp", "🌡️ Температура тела"),
     ("nodes", "🪢 Периферические лимфоузлы (не увеличены/увеличены)"),
     ("throat", "👄 Зев (не гиперемирован/гиперемирован)"),
-    ("mallampaty", "😮 Mallampaty (1,2,3,4)"),
+    ("m1", "Mallampati класс 1 (да/нет)"),
+    ("m2", "Mallampati класс 2 (да/нет)"),
+    ("m3", "Mallampati класс 3 (да/нет)"),
+    ("m4", "Mallampati класс 4 (да/нет)"),
     ("teeth", "🦷 Зубы (санированы/нет, съёмные протезы – есть/нет)"),
     ("edema", "💦 Периферические отёки, пастозность (есть/нет, где)"),
     ("breath", "🌬️ Дыхание (везикулярное/бронхиальное)"),
@@ -70,7 +74,12 @@ FIELDS = [
     ("hvn", "🦵 ХВН сосудов ног (нет/есть, степень)"),
     ("lab", "🧪 Критические данные лабораторного обследования"),
     ("ecg", "📈 ЭКГ (описание)"),
-    ("asa", "📊 ASA (I, II, III, IV, V, E)"),
+    ("a1", "ASA I (да/нет)"),
+    ("a2", "ASA II (да/нет)"),
+    ("a3", "ASA III (да/нет)"),
+    ("a4", "ASA IV (да/нет)"),
+    ("a5", "ASA V (да/нет)"),
+    ("aE", "ASA E (да/нет)"),
     ("mnoar", "📋 МНОАР (баллы)"),
     ("op_vol", "📐 Объём операции (ожидаемый)"),
     ("anes_type", "💉 Тип обезболивания (тотальная/сочетанная/комбинированная/в/венная/ингаляционная/эпидуральная/субарахноидальная/проводниковая)"),
@@ -85,13 +94,11 @@ FIELDS = [
 
 STATE_LIST = list(range(len(FIELDS)))
 
-# ---------- Обработчики бота ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начинаем опрос с первого вопроса"""
     context.user_data.clear()
     context.user_data["step"] = 0
     await update.message.reply_text(
-        "👨‍⚕️ **Заполнение осмотра анестезиолога**\n"
+        "👨‍⚕️ **Заполнение осмотра анестезиолога**\n\n"
         "Я задам несколько вопросов. Отвечайте текстом.\n"
         "Для отмены введите /cancel\n\n"
         f"{FIELDS[0][1]}:",
@@ -100,7 +107,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return STATE_LIST[0]
 
 async def handle_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает ответ на текущий вопрос и переходит к следующему"""
     step = context.user_data.get("step", 0)
     if step >= len(FIELDS):
         return await generate_document(update, context)
@@ -123,9 +129,8 @@ async def handle_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return STATE_LIST[step]
 
 async def generate_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Заменяет метки в template.docx и отправляет файл"""
     data = context.user_data
-    template_path = "template.docx"  # файл должен лежать в корне репозитория
+    template_path = "template.docx"
 
     if not os.path.exists(template_path):
         await update.message.reply_text("❌ Ошибка: файл шаблона template.docx не найден на сервере.")
@@ -140,7 +145,7 @@ async def generate_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if placeholder in paragraph.text:
                 paragraph.text = paragraph.text.replace(placeholder, str(value))
 
-    # Замена в таблицах
+    # Замена в таблицах (на всякий случай)
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
@@ -149,12 +154,10 @@ async def generate_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     if placeholder in cell.text:
                         cell.text = cell.text.replace(placeholder, str(value))
 
-    # Сохраняем во временный файл
     with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
         doc.save(tmp.name)
         tmp_path = tmp.name
 
-    # Отправляем файл
     with open(tmp_path, "rb") as f:
         await update.message.reply_document(
             document=f,
@@ -162,7 +165,7 @@ async def generate_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             caption="📄 Осмотр анестезиолога готов."
         )
 
-    os.unlink(tmp_path)  # удаляем временный файл
+    os.unlink(tmp_path)
     await update.message.reply_text("Для нового осмотра нажмите /start")
     return ConversationHandler.END
 
@@ -170,18 +173,14 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ Заполнение отменено. Чтобы начать заново, введите /start")
     return ConversationHandler.END
 
-# ---------- Настройка вебхуков и веб-сервера ----------
 async def setup_webhook(application):
-    """Устанавливает вебхук при старте"""
     webhook_url = f"{URL}/telegram"
     await application.bot.set_webhook(url=webhook_url, allowed_updates=Update.ALL_TYPES)
     logging.info(f"Webhook set to {webhook_url}")
 
 async def main():
-    # Создаём приложение бота
     application = Application.builder().token(TOKEN).updater(None).build()
 
-    # Регистрируем обработчики
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={state: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_field)] for state in STATE_LIST},
@@ -190,12 +189,9 @@ async def main():
     application.add_handler(conv_handler)
     application.add_handler(CommandHandler("start", start))
 
-    # Устанавливаем вебхук
     await setup_webhook(application)
 
-    # Создаём Starlette приложение для приёма вебхуков
     async def telegram_webhook(request: Request) -> Response:
-        """Принимает POST-запросы от Telegram"""
         data = await request.json()
         update = Update.de_json(data, application.bot)
         await application.process_update(update)
@@ -209,7 +205,6 @@ async def main():
         Route("/healthcheck", health_check, methods=["GET"]),
     ])
 
-    # Запускаем веб-сервер
     config = uvicorn.Config(starlette_app, host="0.0.0.0", port=PORT, log_level="info")
     server = uvicorn.Server(config)
     await server.serve()
