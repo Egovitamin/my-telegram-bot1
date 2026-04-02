@@ -131,21 +131,16 @@ async def handle_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def generate_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = context.user_data
     template_path = "template.docx"
-
     if not os.path.exists(template_path):
-        await update.message.reply_text("❌ Ошибка: файл шаблона template.docx не найден на сервере.")
+        await update.message.reply_text("❌ Ошибка: файл шаблона template.docx не найден.")
         return ConversationHandler.END
 
     doc = Document(template_path)
-
-    # Замена в параграфах
     for paragraph in doc.paragraphs:
         for key, value in data.items():
             placeholder = f"{{{{{key}}}}}"
             if placeholder in paragraph.text:
                 paragraph.text = paragraph.text.replace(placeholder, str(value))
-
-    # Замена в таблицах (на всякий случай)
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
@@ -159,18 +154,13 @@ async def generate_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tmp_path = tmp.name
 
     with open(tmp_path, "rb") as f:
-        await update.message.reply_document(
-            document=f,
-            filename=f"осмотр_{data.get('fio', 'patient')}.docx",
-            caption="📄 Осмотр анестезиолога готов."
-        )
-
+        await update.message.reply_document(document=f, filename=f"осмотр_{data.get('fio', 'patient')}.docx", caption="📄 Осмотр готов.")
     os.unlink(tmp_path)
     await update.message.reply_text("Для нового осмотра нажмите /start")
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("❌ Заполнение отменено. Чтобы начать заново, введите /start")
+    await update.message.reply_text("❌ Заполнение отменено. Для нового осмотра /start")
     return ConversationHandler.END
 
 async def setup_webhook(application):
@@ -180,7 +170,6 @@ async def setup_webhook(application):
 
 async def main():
     application = Application.builder().token(TOKEN).updater(None).build()
-
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={state: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_field)] for state in STATE_LIST},
@@ -190,6 +179,10 @@ async def main():
     application.add_handler(CommandHandler("start", start))
 
     await setup_webhook(application)
+
+    # ГЛАВНОЕ: ЗАПУСКАЕМ ПРИЛОЖЕНИЕ БОТА
+    await application.initialize()
+    await application.start()
 
     async def telegram_webhook(request: Request) -> Response:
         data = await request.json()
@@ -201,14 +194,16 @@ async def main():
         return PlainTextResponse("OK")
 
     starlette_app = Starlette(routes=[
-    Route("/", health_check, methods=["GET"]),   # <-- добавить эту строку
-    Route("/telegram", telegram_webhook, methods=["POST"]),
-    Route("/healthcheck", health_check, methods=["GET"]),
+        Route("/", health_check, methods=["GET"]),
+        Route("/telegram", telegram_webhook, methods=["POST"]),
+        Route("/healthcheck", health_check, methods=["GET"]),
     ])
 
     config = uvicorn.Config(starlette_app, host="0.0.0.0", port=PORT, log_level="info")
     server = uvicorn.Server(config)
     await server.serve()
+
+    await application.stop()
 
 if __name__ == "__main__":
     asyncio.run(main())
